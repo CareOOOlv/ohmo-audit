@@ -2647,6 +2647,12 @@
 
       const stage = buildReport();
       await waitForStageImages(stage);
+      // 导出前临时把报告层置为可见（html2canvas 对 opacity:0 / 屏幕外元素渲染不可靠）
+      const stageEl = stage;
+      const prevOpacity = stageEl.style.opacity;
+      const prevZ = stageEl.style.zIndex;
+      stageEl.style.opacity = '1';
+      stageEl.style.zIndex = '-1';
       const fileName = `ohmo_门店稽查报告_${safeFileName(state.meta.storeName)}_${state.meta.auditDate || TODAY}.pdf`;
       const finishRecordSyncToast = async (prefix) => {
         try {
@@ -2657,25 +2663,30 @@
         }
       };
 
-      if (window.html2pdf) {
-        showToast('正在生成 PDF...');
-        await window.html2pdf().set({
-          margin: [8, 8, 8, 8],
-          filename: fileName,
-          image: { type: 'jpeg', quality: 0.92 },
-          html2canvas: { scale: 2, useCORS: true, allowTaint: true, backgroundColor: '#ffffff' },
-          jsPDF: { unit: 'mm', format: 'a4', orientation: 'portrait' },
-          pagebreak: { mode: ['css', 'legacy'], avoid: ['.report-item', 'h2'] },
-        }).from(stage.firstElementChild).save();
-        await finishRecordSyncToast('PDF 已导出');
-        return;
-      }
+      try {
+        if (window.html2pdf) {
+          showToast('正在生成 PDF...');
+          await window.html2pdf().set({
+            margin: [8, 8, 8, 8],
+            filename: fileName,
+            image: { type: 'jpeg', quality: 0.92 },
+            html2canvas: { scale: 2, useCORS: true, allowTaint: true, backgroundColor: '#ffffff' },
+            jsPDF: { unit: 'mm', format: 'a4', orientation: 'portrait' },
+            pagebreak: { mode: ['css', 'legacy'], avoid: ['.report-item', 'h2'] },
+          }).from(stage.firstElementChild).save();
+          await finishRecordSyncToast('PDF 已导出');
+          return;
+        }
 
-      document.body.classList.add('print-root');
-      showToast('PDF 组件未加载，已打开浏览器打印导出');
-      window.print();
-      document.body.classList.remove('print-root');
-      await finishRecordSyncToast('报告已生成');
+        document.body.classList.add('print-root');
+        showToast('PDF 组件未加载，已打开浏览器打印导出');
+        window.print();
+        document.body.classList.remove('print-root');
+        await finishRecordSyncToast('报告已生成');
+      } finally {
+        stageEl.style.opacity = prevOpacity;
+        stageEl.style.zIndex = prevZ;
+      }
     }
 
     function exportData() {
