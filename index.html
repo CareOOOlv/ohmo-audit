@@ -1116,13 +1116,13 @@
         <h2>稽查记录</h2>
         <p>这里只保存已生成报告的得分摘要，不保存照片和完整档案。</p>
       </div>
-      <details class="cloud-panel" open>
-        <summary>云端数据库配置</summary>
-        <small>使用腾讯云 CloudBase 云函数保存稽查得分记录。部署云函数后，将 HTTP 触发地址填入下方即可跨设备查看得分记录。</small>
+      <details class="cloud-panel">
+        <summary>云端数据库配置（已配置 CloudBase）</summary>
+        <small>稽查得分记录通过腾讯云 CloudBase 云函数自动同步，无需手动配置。</small>
         <div class="cloud-grid">
           <div class="field" style="grid-column:1/-1">
             <label for="cloudApiUrl">CloudBase 云函数地址</label>
-            <input id="cloudApiUrl" placeholder="https://你的环境ID.service.tcloudbasegateway.com/audit-api">
+            <input id="cloudApiUrl" placeholder="https://环境ID.ap-shanghai.app.tcloudbase.com/audit-api">
           </div>
           <button class="action-btn primary" id="saveCloudConfigBtn">保存配置</button>
         </div>
@@ -1930,7 +1930,7 @@
       statusFilter: 'all',
       search: '',
       activePhotoItemId: null,
-      cloudConfig: { apiUrl: '' },
+      cloudConfig: { apiUrl: 'https://careooolv-d8gnyhzsnfe9e7356-1438923118.ap-shanghai.app.tcloudbase.com/audit-api' },
       records: [],
     };
 

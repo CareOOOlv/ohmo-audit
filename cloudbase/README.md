@@ -1,56 +1,27 @@
-# ohmo 稽查 CloudBase 部署指南
+# ohmo 稽查 CloudBase 部署状态
 
-## 方案概述
+## 已完成部署 ✅
 
-| 层 | 方案 | 费用 |
-|---|------|------|
-| 静态托管 | GitHub Pages | 免费 |
-| API + 数据库 | CloudBase 免费体验版 | 免费（3000 资源点/月） |
+| 资源 | 值 |
+|---|---|
+| 环境 ID | `careooolv-d8gnyhzsnfe9e7356` |
+| 环境别名 | `careooolv` |
+| 套餐 | 体验版（免费，3000 资源点/月） |
+| 区域 | `ap-shanghai` |
+| 到期 | 2026-12-24 |
+| 数据库集合 | `audit_records`（含 3 个索引：`id`、`audit_date`、`generated_at`） |
+| 云函数 | `audit-api`（Event 函数 + HTTP 网关，Node.js 18.15） |
+| HTTP 网关地址 | `https://careooolv-d8gnyhzsnfe9e7356-1438923118.ap-shanghai.app.tcloudbase.com/audit-api` |
+| 静态站点 | `https://careooolv.github.io/ohmo-audit/` |
 
-## 部署步骤（约 5 分钟）
+## API 接口
 
-### 1. 创建 CloudBase 环境
-
-1. 打开 [CloudBase 控制台](https://console.cloud.tencent.com/tcb)
-2. 点击「新建环境」，选择「免费体验版」（每个账号可创建 1 个免费环境）
-3. 记下 **环境 ID**（形如 `ohmo-xxxxx`）
-
-### 2. 创建数据库集合
-
-1. 在控制台进入「数据库」
-2. 点击「+」添加集合，名称填 `audit_records`
-3. 权限设置选「所有用户可读，仅创建者可写」（或按需调整）
-
-### 3. 部署云函数
-
-#### 方式 A：控制台上传（推荐，无需安装工具）
-
-1. 进入「云函数」页面，点击「新建函数」
-2. 函数名称：`audit-api`
-3. 运行环境：Node.js 16
-4. 执行方法：`index.main`
-5. 将 `cloudbase/audit-api/index.js` 和 `package.json` 打成 zip 上传
-   （或直接在在线编辑器中粘贴代码）
-6. 部署完成后，进入「函数服务」→「触发器管理」
-7. 添加 HTTP 触发器，路径填 `/audit-api`，方法选 `GET, POST, DELETE, OPTIONS`
-
-#### 方式 B：CLI 部署
-
-```bash
-npm i -g @cloudbase/cli
-tcb login
-tcb fn deploy audit-api --env <你的环境ID>
-```
-
-### 4. 获取 HTTP 触发地址
-
-部署完成后，HTTP 触发地址格式为：
-
-```
-https://<环境ID>.service.tcloudbasegateway.com/audit-api
-```
-
-将这个地址填入稽查工具「稽查记录」页面的「云函数地址」输入框，点击保存即可。
+| 方法 | 路径 | 功能 |
+|------|------|------|
+| POST | `/audit-api` | 保存稽查得分记录 |
+| GET | `/audit-api` | 查询记录列表（可选 `?start=&end=` 日期筛选） |
+| DELETE | `/audit-api?id=xxx` | 删除指定记录 |
+| OPTIONS | `/audit-api` | CORS 预检 |
 
 ## 数据结构
 
@@ -69,4 +40,12 @@ https://<环境ID>.service.tcloudbasegateway.com/audit-api
 | pass_count | number | 通过项数 |
 | fail_count | number | 不通过项数 |
 | pending_count | number | 待评项数 |
-| category_scores | array | 各分类得分 |
+| category_scores | object | 各分类得分 |
+
+## 云函数代码
+
+位于 `cloudbase/audit-api/`：
+- `index.js` — Event 函数，使用 `@cloudbase/node-sdk` 访问 NoSQL 数据库
+- `package.json` — 依赖声明
+
+如需更新云函数代码，修改 `index.js` 后重新部署即可。

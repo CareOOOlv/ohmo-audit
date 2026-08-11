@@ -1,17 +1,17 @@
 /**
  * ohmo 门店稽查得分记录 API
- * CloudBase 云函数 - HTTP 触发
+ * CloudBase 云函数 - Event 函数 + HTTP 网关访问
+ *
+ * HTTP 网关触发时 event 格式：
+ *   { httpMethod, body, queryStringParameters, headers, path, ... }
  *
  * 功能：
- *   POST   /audit-api          → 保存一条稽查得分记录
- *   GET    /audit-api           → 查询记录列表（可选 start/end 日期筛选）
- *   DELETE /audit-api?id=xxx   → 删除指定记录
- *   OPTIONS                     → CORS 预检
+ *   POST          → 保存一条稽查得分记录
+ *   GET           → 查询记录列表（可选 start/end 日期筛选）
+ *   DELETE?id=xxx → 删除指定记录
+ *   OPTIONS       → CORS 预检
  *
  * 数据库集合：audit_records
- * 记录字段：id, store_name, auditor, audit_date, generated_at,
- *           total_score, max_score, percent, pass_count, fail_count,
- *           pending_count, category_scores
  */
 
 const cloud = require('@cloudbase/node-sdk')
@@ -36,7 +36,6 @@ function jsonRes(statusCode, data) {
 }
 
 exports.main = async (event, context) => {
-  // 兼容 HTTP 触发 和 SDK 直接调用两种方式
   const method = event.httpMethod || event.method || 'POST'
   const body = event.body
     ? (typeof event.body === 'string' ? JSON.parse(event.body) : event.body)
@@ -56,11 +55,8 @@ exports.main = async (event, context) => {
         return jsonRes(400, { error: '缺少 id 字段' })
       }
 
-      // 用前端生成的 id 作为文档 _id，方便后续按 id 删除
-      const docData = { ...record }
-      docData._id = record.id
-
-      await db.collection('audit_records').add({ data: docData })
+      // 直接传入文档字段，不使用 data 包装
+      await db.collection('audit_records').add(record)
 
       return jsonRes(201, { ok: true, id: record.id })
     }
@@ -71,11 +67,12 @@ exports.main = async (event, context) => {
 
       // 日期范围筛选
       const conditions = {}
-      if (query.start) {
+      if (query.start && query.end) {
+        conditions.audit_date = _.gte(query.start).and(_.lt(query.end))
+      } else if (query.start) {
         conditions.audit_date = _.gte(query.start)
-      }
-      if (query.end) {
-        conditions.audit_date = Object.assign(conditions.audit_date || {}, _.lt(query.end))
+      } else if (query.end) {
+        conditions.audit_date = _.lt(query.end)
       }
       if (Object.keys(conditions).length > 0) {
         chain = chain.where(conditions)
@@ -86,8 +83,12 @@ exports.main = async (event, context) => {
         .limit(200)
         .get()
 
-      // 移除 CloudBase 内部 _id 字段，保留业务字段
-      const records = (result.data || []).map(({ _id, ...rest }) => rest)
+      // result.data 是文档数组，每个文档的 _id 是数据库自动生成的
+      // 我们只需要返回业务字段（原始 record 中的字段）
+      const records = (result.data || []).map((doc) => {
+        const { _id, ...rest } = doc
+        return rest
+      })
 
       return jsonRes(200, records)
     }
@@ -99,7 +100,12 @@ exports.main = async (event, context) => {
         return jsonRes(400, { error: '缺少 id 参数' })
       }
 
-      await db.collection('audit_records').doc(id).remove()
+      // 按 id 字段查找并删除（不依赖 _id）
+      const result = await db.collection('audit_records').where({ id }).remove()
+
+      if (result.deleted === 0) {
+        return jsonRes(404, { error: '记录不存在' })
+      }
 
       return jsonRes(200, { ok: true })
     }
