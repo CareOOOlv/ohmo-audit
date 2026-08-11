@@ -2320,17 +2320,17 @@
       const done = pass + fail;
       const pending = items.length - done;
       const itemCount = items.length;
-      // 评分规则：满分 100，每项不通过扣 1 分，最低 6 分保底；待评不扣分
-      // 分类级别也按相同规则：分类满分 = 分类项数（最多扣到 0，保底规则只在总分应用）
-      const score = Math.max(0, itemCount - fail);
-      const maxScore = itemCount;
+      // 评分规则：满分 100，每条不通过按该项分值（item.score）扣分，最低 0 分；待评不扣分
+      const failScore = items.reduce((sum, item) => getStatus(item.id) === 'fail' ? sum + (item.score || 0) : sum, 0);
+      const maxScore = items.reduce((sum, item) => sum + (item.score || 0), 0);
+      const score = Math.max(0, maxScore - failScore);
       const percent = maxScore ? Math.round(score / maxScore * 100) : 0;
-      return { pass, fail, done, pending, total: itemCount, score, maxScore, percent };
+      return { pass, fail, done, pending, total: itemCount, score, maxScore, percent, failScore };
     }
 
-    // 总分显示专用：100 分制，不通过扣 1 分，最低 6 分
+    // 总分显示专用：100 分制，不通过按分值扣分，最低 0 分
     function totalScore(s) {
-      const displayScore = Math.max(6, 100 - s.fail);
+      const displayScore = Math.max(0, 100 - s.failScore);
       const displayMax = 100;
       const displayPercent = displayScore; // 百分制即分值
       return { ...s, displayScore, displayMax, displayPercent };
@@ -2413,7 +2413,7 @@
                 <span class="pill">${escapeHtml(categoryName(item.category))}</span>
                 <span class="pill ${typeClass}">${escapeHtml(item.type)}</span>
               </div>
-              <div class="score">1 分</div>
+              <div class="score">${item.score || 1} 分</div>
             </div>
             <p class="desc">${escapeHtml(item.desc)}</p>
             ${item.sub ? `<div class="sub">${escapeHtml(item.sub)}</div>` : ''}
@@ -2546,7 +2546,7 @@
             const categoryItems = ITEMS_DATA.filter((item) => item.category === category);
             const cs = statsFor(categoryItems);
             return `
-              <h2>${escapeHtml(categoryName(category))}：扣 ${cs.fail} 分（通过 ${cs.pass}，不通过 ${cs.fail}，待评 ${cs.pending}，共 ${cs.total} 项）</h2>
+              <h2>${escapeHtml(categoryName(category))}：扣 ${cs.failScore} 分（通过 ${cs.pass}，不通过 ${cs.fail} 项，待评 ${cs.pending}，共 ${cs.total} 项）</h2>
               <table>
                 <thead>
                   <tr><th style="width:72px">编号</th><th style="width:56px">类型</th><th style="width:46px">分值</th><th style="width:58px">结果</th><th>内容与备注</th></tr>
@@ -2561,7 +2561,7 @@
                       <tr class="report-item">
                         <td>${item.id}</td>
                         <td>${escapeHtml(item.type)}</td>
-                        <td>1</td>
+                        <td>${item.score || 1}</td>
                         <td>${statusText}</td>
                         <td>
                           <div>${escapeHtml(item.desc)}</div>
@@ -2932,10 +2932,10 @@
       list.innerHTML = records.map((record, index) => {
         const categoryScores = Array.isArray(record.category_scores) ? record.category_scores : [];
         const generatedAt = record.generated_at ? new Date(record.generated_at).toLocaleString('zh-CN', { hour12: false }) : '';
-        // 分类得分用中文名展示，每项显示"扣X分"
+        // 分类得分用中文名展示，每项显示"扣X分"（按分值合计）
         const categoryItems = categoryScores.map((item) => {
           const name = categoryName(item.category);
-          const deducted = item.fail || 0;
+          const deducted = item.failScore != null ? item.failScore : (item.fail || 0);
           return `<span>${escapeHtml(name)}<b>扣${deducted}分</b></span>`;
         }).join('');
         return `
