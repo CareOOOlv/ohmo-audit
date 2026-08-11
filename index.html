@@ -2351,7 +2351,7 @@
       document.getElementById('categoryTabs').innerHTML = categories.map((category) => {
         const items = category === 'all' ? ITEMS_DATA : ITEMS_DATA.filter((item) => item.category === category);
         const s = statsFor(items);
-        const label = category === 'all' ? '全部' : category;
+        const label = category === 'all' ? '全部' : categoryName(category);
         return `<button class="${state.currentCategory === category ? 'active' : ''}" data-category="${category}">${label} ${s.done}/${s.total}</button>`;
       }).join('');
     }
@@ -2407,7 +2407,7 @@
             <div class="item-head">
               <div class="item-id">
                 <span class="pill id">${item.id}</span>
-                <span class="pill">${item.category}</span>
+                <span class="pill">${escapeHtml(categoryName(item.category))}</span>
                 <span class="pill ${typeClass}">${escapeHtml(item.type)}</span>
               </div>
               <div class="score">1 分</div>
@@ -2543,7 +2543,7 @@
             const categoryItems = ITEMS_DATA.filter((item) => item.category === category);
             const cs = statsFor(categoryItems);
             return `
-              <h2>${category}：扣 ${cs.fail} 分（通过 ${cs.pass}，不通过 ${cs.fail}，待评 ${cs.pending}，共 ${cs.total} 项）</h2>
+              <h2>${escapeHtml(categoryName(category))}：扣 ${cs.fail} 分（通过 ${cs.pass}，不通过 ${cs.fail}，待评 ${cs.pending}，共 ${cs.total} 项）</h2>
               <table>
                 <thead>
                   <tr><th style="width:72px">编号</th><th style="width:56px">类型</th><th style="width:46px">分值</th><th style="width:58px">结果</th><th>内容与备注</th></tr>
@@ -2647,12 +2647,14 @@
 
       const stage = buildReport();
       await waitForStageImages(stage);
-      // 导出前临时把报告层置为可见（html2canvas 对 opacity:0 / 屏幕外元素渲染不可靠）
       const stageEl = stage;
-      const prevOpacity = stageEl.style.opacity;
-      const prevZ = stageEl.style.zIndex;
-      stageEl.style.opacity = '1';
-      stageEl.style.zIndex = '-1';
+      const prevStyle = stageEl.getAttribute('style') || '';
+      // 导出前临时把报告层移到视口内固定定位并可见，
+      // 避免 html2canvas 对屏幕外/低透明度元素渲染不完整（B11后截断、首页空白）
+      stageEl.setAttribute('style', 'position:fixed;left:0;top:0;width:794px;background:#ffffff;opacity:1;z-index:9999;margin:0;padding:0;');
+      // 等两帧让浏览器完成布局
+      await new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(r)));
+      const contentHeight = Math.max(stageEl.scrollHeight, 300);
       const fileName = `ohmo_门店稽查报告_${safeFileName(state.meta.storeName)}_${state.meta.auditDate || TODAY}.pdf`;
       const finishRecordSyncToast = async (prefix) => {
         try {
@@ -2670,7 +2672,14 @@
             margin: [8, 8, 8, 8],
             filename: fileName,
             image: { type: 'jpeg', quality: 0.92 },
-            html2canvas: { scale: 2, useCORS: true, allowTaint: true, backgroundColor: '#ffffff' },
+            html2canvas: {
+              scale: 2,
+              windowWidth: 794,
+              windowHeight: contentHeight,
+              useCORS: true,
+              allowTaint: true,
+              backgroundColor: '#ffffff',
+            },
             jsPDF: { unit: 'mm', format: 'a4', orientation: 'portrait' },
             pagebreak: { mode: ['css', 'legacy'], avoid: ['.report-item', 'h2'] },
           }).from(stage.firstElementChild).save();
@@ -2684,8 +2693,7 @@
         document.body.classList.remove('print-root');
         await finishRecordSyncToast('报告已生成');
       } finally {
-        stageEl.style.opacity = prevOpacity;
-        stageEl.style.zIndex = prevZ;
+        stageEl.setAttribute('style', prevStyle);
       }
     }
 
