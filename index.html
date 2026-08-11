@@ -285,11 +285,33 @@
       font-size: 12px;
     }
 
+    .record-index {
+      display: inline-block;
+      background: var(--brand);
+      color: #fff;
+      padding: 2px 8px;
+      border-radius: 10px;
+      font-size: 11px;
+      font-weight: 600;
+      margin-bottom: 4px;
+    }
+
     .record-score {
       text-align: right;
+      white-space: nowrap;
+    }
+
+    .record-score b {
+      font-size: 28px;
       font-weight: 900;
       color: var(--brand-strong);
-      white-space: nowrap;
+      display: block;
+      line-height: 1.1;
+    }
+
+    .record-score span {
+      font-size: 12px;
+      color: var(--muted);
     }
 
     .category-score-grid {
@@ -302,10 +324,18 @@
     .category-score-grid span {
       border: 1px solid var(--line);
       border-radius: 6px;
-      padding: 6px;
+      padding: 6px 8px;
       font-size: 12px;
       background: #fbfaf6;
       color: var(--ink);
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+    }
+
+    .category-score-grid span b {
+      color: #c0392b;
+      font-weight: 700;
     }
 
     .topbar {
@@ -1329,10 +1359,10 @@
           <div class="field">
             <label for="recordSort">排序</label>
             <select id="recordSort" style="width:100%;height:40px;border:1px solid var(--line);border-radius:var(--radius);padding:0 10px;background:#fff;">
-              <option value="date_desc">生成时间从新到旧</option>
-              <option value="date_asc">生成时间从旧到新</option>
               <option value="score_desc">总分从高到低</option>
               <option value="score_asc">总分从低到高</option>
+              <option value="date_desc">生成时间从新到旧</option>
+              <option value="date_asc">生成时间从旧到新</option>
             </select>
           </div>
           <div></div>
@@ -2254,6 +2284,26 @@
       });
     }
 
+    // 分类中文名映射（用于记录页展示）
+    const CATEGORY_NAMES = {
+      F1: '人员资质',
+      F2: '仪容仪表',
+      F3: '原物料',
+      F4: '工器具',
+      F5: '清洁卫生',
+      F6: '储存管理',
+      F7: '设备保养',
+      F8: '化学品安全',
+      B1: '门头形象',
+      B2: '售卖管理',
+      B3: '操作规范',
+      B4: '用工合规',
+    };
+
+    function categoryName(code) {
+      return CATEGORY_NAMES[code] || code;
+    }
+
     function statsFor(items = ITEMS_DATA) {
       const pass = items.filter((item) => getStatus(item.id) === 'pass').length;
       const fail = items.filter((item) => getStatus(item.id) === 'fail').length;
@@ -2551,26 +2601,48 @@
       const imgs = stage.querySelectorAll('img');
       if (!imgs.length) return;
       await Promise.all([...imgs].map((img) => {
-        if (img.complete && img.naturalWidth > 0) {
-          return typeof img.decode === 'function' ? img.decode().catch(() => {}) : Promise.resolve();
-        }
+        // 对 base64 dataURL，先强制重新加载确保 load 事件能被捕获
         return new Promise((resolve) => {
-          const done = () => {
+          const finish = () => {
             if (typeof img.decode === 'function') {
               img.decode().then(resolve).catch(resolve);
-            } else { resolve(); }
+            } else {
+              // 给浏览器一帧时间完成绘制
+              requestAnimationFrame(() => resolve());
+            }
           };
-          img.addEventListener('load', done, { once: true });
-          img.addEventListener('error', () => resolve(), { once: true });
+          if (img.complete && img.naturalWidth > 0) {
+            finish();
+          } else {
+            img.addEventListener('load', finish, { once: true });
+            img.addEventListener('error', () => resolve(), { once: true });
+          }
         });
       }));
+      // 额外等待一帧确保所有图片完成布局和绘制
+      await new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(r)));
     }
 
     async function exportPdf() {
       state.meta.storeName = document.getElementById('storeName').value.trim();
       state.meta.auditor = document.getElementById('auditor').value.trim();
       state.meta.auditDate = document.getElementById('auditDate').value || TODAY;
+      state.meta.signerName = document.getElementById('signerName').value.trim();
+      state.meta.signDate = document.getElementById('signDate').value || state.meta.auditDate || TODAY;
+
+      // 强制保存当前画板状态（防止用户签完未触发 mouseup）
+      if (signaturePad) signaturePad.flush();
+      if (auditorSignaturePad) auditorSignaturePad.flush();
       await putToStore('meta', { key: META_KEY, data: state.meta });
+
+      // 校验：门店负责人必须签字才能导出
+      if (!state.signature) {
+        showToast('请先完成门店负责人签字后再导出报告');
+        // 滚动到签字区
+        const sigSection = document.querySelector('.signature-section');
+        if (sigSection) sigSection.scrollIntoView({ behavior: 'smooth', block: 'center' });
+        return;
+      }
 
       const stage = buildReport();
       await waitForStageImages(stage);
@@ -2746,11 +2818,13 @@
     function renderRecords() {
       const list = document.getElementById('recordsList');
       const sortValue = document.getElementById('recordSort').value;
+      // 默认按得分从高到低排序
       const records = [...state.records].sort((a, b) => {
         if (sortValue === 'date_asc') return String(a.generated_at).localeCompare(String(b.generated_at));
-        if (sortValue === 'score_desc') return Number(b.total_score || 0) - Number(a.total_score || 0);
         if (sortValue === 'score_asc') return Number(a.total_score || 0) - Number(b.total_score || 0);
-        return String(b.generated_at).localeCompare(String(a.generated_at));
+        if (sortValue === 'date_desc') return String(b.generated_at).localeCompare(String(a.generated_at));
+        // 默认 score_desc
+        return Number(b.total_score || 0) - Number(a.total_score || 0);
       });
 
       if (!records.length) {
@@ -2758,21 +2832,28 @@
         return;
       }
 
-      list.innerHTML = records.map((record) => {
+      list.innerHTML = records.map((record, index) => {
         const categoryScores = Array.isArray(record.category_scores) ? record.category_scores : [];
         const generatedAt = record.generated_at ? new Date(record.generated_at).toLocaleString('zh-CN', { hour12: false }) : '';
+        // 分类得分用中文名展示，每项显示"扣X分"
+        const categoryItems = categoryScores.map((item) => {
+          const name = categoryName(item.category);
+          const deducted = item.fail || 0;
+          return `<span>${escapeHtml(name)}<b>扣${deducted}分</b></span>`;
+        }).join('');
         return `
           <article class="record-card" data-record-id="${escapeHtml(record.id)}">
             <div class="record-head">
               <div>
+                <span class="record-index">第 ${index + 1} 条</span>
                 <strong>${escapeHtml(record.store_name || '未命名门店')}</strong>
                 <span>${escapeHtml(record.audit_date || '')} · ${escapeHtml(record.auditor || '未填写稽查人')}</span>
               </div>
-              <div class="record-score">${record.total_score}/${record.max_score}<br><span>${record.percent || 0}%</span></div>
+              <div class="record-score"><b>${record.total_score || 0}</b><span>/ ${record.max_score || 100}分</span></div>
             </div>
-            <div class="record-meta">生成时间：${escapeHtml(generatedAt)} · 通过 ${record.pass_count || 0} · 不通过 ${record.fail_count || 0} · 待评 ${record.pending_count || 0}</div>
+            <div class="record-meta">生成时间：${escapeHtml(generatedAt)} · 通过 ${record.pass_count || 0} · 不通过 ${record.fail_count || 0} · 待评 ${record.pending_count || 0}${record.has_signature ? ' · 已签字' : ''}</div>
             <div class="category-score-grid">
-              ${categoryScores.map((item) => `<span>${escapeHtml(item.category)} ${item.score}/${item.maxScore}</span>`).join('')}
+              ${categoryItems || '<span>无分类数据</span>'}
             </div>
             <div style="margin-top:10px;text-align:right;">
               <button class="secondary-btn danger" data-action="delete-record">删除记录</button>
@@ -2824,9 +2905,7 @@
       let drawing = false;
       let lastX = 0;
       let lastY = 0;
-      let hasContent = false;
-
-      // 设置高 DPI canvas，避免签名模糊
+      let hasContent = false;      // 设置高 DPI canvas，避免签名模糊
       function fitCanvas() {
         const rect = canvas.getBoundingClientRect();
         const dpr = window.devicePixelRatio || 1;
@@ -2923,7 +3002,19 @@
         img.src = existing;
       }
 
-      return { clear, fitCanvas, canvas };
+      // flush：强制将当前画板内容保存到 state（防止用户签完未触发 mouseup）
+      function flush() {
+        if (hasContent) {
+          setValue(canvas.toDataURL('image/png'));
+        }
+      }
+
+      // hasSignature：检查画板是否有内容
+      function hasSignature() {
+        return hasContent;
+      }
+
+      return { clear, fitCanvas, flush, hasSignature, canvas };
     }
 
     function switchView(view) {
