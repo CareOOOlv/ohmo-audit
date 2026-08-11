@@ -1118,19 +1118,11 @@
       </div>
       <details class="cloud-panel" open>
         <summary>云端数据库配置</summary>
-        <small>GitHub Pages 是静态站点，不能直接写数据库。这里使用 Supabase REST 保存记录：创建表后填入 Project URL、anon key 和表名即可跨设备云端同步。</small>
+        <small>使用腾讯云 CloudBase 云函数保存稽查得分记录。部署云函数后，将 HTTP 触发地址填入下方即可跨设备查看得分记录。</small>
         <div class="cloud-grid">
-          <div class="field">
-            <label for="cloudUrl">Supabase Project URL</label>
-            <input id="cloudUrl" placeholder="https://xxxx.supabase.co">
-          </div>
-          <div class="field">
-            <label for="cloudKey">Supabase anon key</label>
-            <input id="cloudKey" placeholder="eyJ...">
-          </div>
-          <div class="field">
-            <label for="cloudTable">表名</label>
-            <input id="cloudTable" value="audit_records">
+          <div class="field" style="grid-column:1/-1">
+            <label for="cloudApiUrl">CloudBase 云函数地址</label>
+            <input id="cloudApiUrl" placeholder="https://你的环境ID.service.tcloudbasegateway.com/audit-api">
           </div>
           <button class="action-btn primary" id="saveCloudConfigBtn">保存配置</button>
         </div>
@@ -1938,7 +1930,7 @@
       statusFilter: 'all',
       search: '',
       activePhotoItemId: null,
-      cloudConfig: { url: '', key: '', table: 'audit_records' },
+      cloudConfig: { apiUrl: '' },
       records: [],
     };
 
@@ -2393,19 +2385,11 @@
     }
 
     function isCloudConfigured() {
-      return Boolean(state.cloudConfig.url && state.cloudConfig.key && state.cloudConfig.table);
+      return Boolean(state.cloudConfig.apiUrl);
     }
 
-    function cloudBaseUrl() {
-      return state.cloudConfig.url.replace(/\/+$/, '');
-    }
-
-    function cloudHeaders(extra = {}) {
-      return {
-        apikey: state.cloudConfig.key,
-        Authorization: `Bearer ${state.cloudConfig.key}`,
-        ...extra,
-      };
+    function cloudApiUrl() {
+      return (state.cloudConfig.apiUrl || '').replace(/\/+$/, '');
     }
 
     function buildRecordPayload() {
@@ -2428,12 +2412,9 @@
 
     async function saveAuditSummaryRecord() {
       if (!isCloudConfigured()) return false;
-      const response = await fetch(`${cloudBaseUrl()}/rest/v1/${encodeURIComponent(state.cloudConfig.table)}`, {
+      const response = await fetch(cloudApiUrl(), {
         method: 'POST',
-        headers: cloudHeaders({
-          'Content-Type': 'application/json',
-          Prefer: 'return=minimal',
-        }),
+        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(buildRecordPayload()),
       });
       if (!response.ok) {
@@ -2455,26 +2436,26 @@
       const list = document.getElementById('recordsList');
       if (!isCloudConfigured()) {
         state.records = [];
-        list.innerHTML = '<div class="empty">请先填写 Supabase 云端数据库配置。生成 PDF 后，系统只会保存得分摘要。</div>';
+        list.innerHTML = '<div class="empty">请先填写 CloudBase 云函数地址。生成 PDF 后，系统只会保存得分摘要。</div>';
         return;
       }
 
       list.innerHTML = '<div class="empty">正在加载云端记录...</div>';
       const params = new URLSearchParams();
-      params.set('select', '*');
       const bounds = monthBounds(document.getElementById('recordMonth').value);
       if (bounds) {
-        params.append('audit_date', `gte.${bounds.start}`);
-        params.append('audit_date', `lt.${bounds.next}`);
+        params.set('start', bounds.start);
+        params.set('end', bounds.next);
       }
-      const response = await fetch(`${cloudBaseUrl()}/rest/v1/${encodeURIComponent(state.cloudConfig.table)}?${params.toString()}`, {
-        headers: cloudHeaders(),
-      });
+      const queryString = params.toString();
+      const url = queryString ? `${cloudApiUrl()}?${queryString}` : cloudApiUrl();
+      const response = await fetch(url);
       if (!response.ok) {
         list.innerHTML = `<div class="empty">云端记录加载失败：${response.status}</div>`;
         return;
       }
-      state.records = await response.json();
+      const data = await response.json();
+      state.records = Array.isArray(data) ? data : [];
       renderRecords();
     }
 
@@ -2520,9 +2501,8 @@
     async function deleteCloudRecord(id) {
       if (!isCloudConfigured()) return;
       if (!confirm('确定删除这条稽查记录吗？')) return;
-      const response = await fetch(`${cloudBaseUrl()}/rest/v1/${encodeURIComponent(state.cloudConfig.table)}?id=eq.${encodeURIComponent(id)}`, {
+      const response = await fetch(`${cloudApiUrl()}?id=${encodeURIComponent(id)}`, {
         method: 'DELETE',
-        headers: cloudHeaders(),
       });
       if (!response.ok) throw new Error(`删除失败 ${response.status}`);
       state.records = state.records.filter((record) => record.id !== id);
@@ -2531,9 +2511,7 @@
     }
 
     function renderCloudConfig() {
-      document.getElementById('cloudUrl').value = state.cloudConfig.url || '';
-      document.getElementById('cloudKey').value = state.cloudConfig.key || '';
-      document.getElementById('cloudTable').value = state.cloudConfig.table || 'audit_records';
+      document.getElementById('cloudApiUrl').value = state.cloudConfig.apiUrl || '';
     }
 
     function switchView(view) {
@@ -2664,9 +2642,7 @@
       document.getElementById('resetBtn').addEventListener('click', () => resetAudit().catch((error) => showToast(error.message)));
       document.getElementById('saveCloudConfigBtn').addEventListener('click', () => {
         state.cloudConfig = {
-          url: document.getElementById('cloudUrl').value.trim(),
-          key: document.getElementById('cloudKey').value.trim(),
-          table: document.getElementById('cloudTable').value.trim() || 'audit_records',
+          apiUrl: document.getElementById('cloudApiUrl').value.trim(),
         };
         localStorage.setItem(CLOUD_CONFIG_KEY, JSON.stringify(state.cloudConfig));
         showToast('云端配置已保存');
