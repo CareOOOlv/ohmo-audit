@@ -862,13 +862,15 @@
     }
 
     .report-stage {
-      position: fixed;
-      left: -10000px;
+      position: absolute;
+      left: 0;
       top: 0;
       width: 794px;
       background: #fff;
       color: #111;
+      opacity: 0;
       z-index: -1;
+      pointer-events: none;
     }
 
     .report {
@@ -1027,6 +1029,13 @@
       padding: 30px 0;
     }
 
+    .signature-text {
+      font-size: 18px;
+      font-weight: 600;
+      color: #1a1a1a;
+      font-family: "Kaiti", "STKaiti", "楷体", serif;
+    }
+
     .signature-meta {
       font-size: 11px;
       color: #444;
@@ -1039,81 +1048,94 @@
     }
 
     /* 签字区（前端交互） */
-    .signature-section {
-      padding: 16px;
-      margin: 0 12px 90px;
-      background: #fff;
-      border: 1px solid var(--line);
-      border-radius: var(--radius);
-      box-shadow: var(--shadow);
+    /* 全屏签字遮罩 */
+    .sign-overlay {
+      position: fixed;
+      inset: 0;
+      z-index: 9999;
+      background: #f5f7f6;
+      display: none;
+      flex-direction: column;
+      overflow: hidden;
     }
-
-    .signature-section h3 {
-      font-size: 16px;
-      margin: 0 0 6px;
-      color: var(--brand-dark, #0f513b);
+    .sign-overlay.active {
+      display: flex;
     }
-
-    .signature-hint {
-      font-size: 12px;
-      color: #666;
-      margin: 0 0 12px;
-      line-height: 1.5;
+    .sign-overlay-inner {
+      display: flex;
+      flex-direction: column;
+      height: 100%;
+      max-width: 900px;
+      margin: 0 auto;
+      width: 100%;
     }
-
-    .signature-fields {
-      display: grid;
-      grid-template-columns: 2fr 1fr;
-      gap: 10px;
-      margin-bottom: 12px;
-    }
-
-    .signature-pads {
-      display: grid;
-      grid-template-columns: 1fr 1fr;
-      gap: 12px;
-    }
-
-    .signature-card {
-      border: 1px solid var(--line);
-      border-radius: 6px;
-      padding: 10px;
-      background: #fafdfb;
-    }
-
-    .signature-card-head {
+    .sign-overlay-head {
       display: flex;
       align-items: center;
       justify-content: space-between;
-      margin-bottom: 8px;
-    }
-
-    .signature-card-head strong {
-      font-size: 13px;
-      color: #333;
-    }
-
-    .signature-card canvas {
-      width: 100%;
-      height: auto;
-      aspect-ratio: 900 / 240;
+      padding: 12px 16px;
       background: #fff;
-      border: 1.5px dashed #b8c2bd;
-      border-radius: 4px;
+      border-bottom: 1px solid var(--line);
+      flex-shrink: 0;
+    }
+    .sign-overlay-head h3 {
+      font-size: 17px;
+      margin: 0;
+      color: var(--brand-dark, #0f513b);
+    }
+    .sign-overlay-info {
+      display: flex;
+      gap: 10px;
+      padding: 10px 16px;
+      background: #fff;
+      border-bottom: 1px solid var(--line);
+      flex-shrink: 0;
+    }
+    .sign-overlay-info .field {
+      flex: 1;
+    }
+    .sign-canvas-area {
+      flex: 1;
+      position: relative;
+      padding: 12px 16px;
+      display: flex;
+      align-items: stretch;
+      justify-content: center;
+      min-height: 0;
+    }
+    .sign-canvas-area canvas {
+      width: 100%;
+      height: 100%;
+      background: #fff;
+      border: 2px dashed #b8c2bd;
+      border-radius: 8px;
       touch-action: none;
       cursor: crosshair;
       display: block;
     }
-
-    .signature-card:nth-child(2) canvas {
-      aspect-ratio: 900 / 180;
+    .sign-canvas-placeholder {
+      position: absolute;
+      top: 50%;
+      left: 50%;
+      transform: translate(-50%, -50%);
+      color: #ccc;
+      font-size: 16px;
+      pointer-events: none;
+      transition: opacity 0.2s;
     }
-
-    .signature-tip {
-      font-size: 11px;
-      color: #888;
-      margin-top: 6px;
-      text-align: center;
+    .sign-canvas-placeholder.hidden {
+      opacity: 0;
+    }
+    .sign-overlay-foot {
+      padding: 12px 16px 20px;
+      background: #fff;
+      border-top: 1px solid var(--line);
+      flex-shrink: 0;
+    }
+    .sign-overlay-foot .action-btn {
+      width: 100%;
+      font-size: 16px;
+      padding: 14px;
     }
 
     @media (max-width: 820px) {
@@ -1170,6 +1192,7 @@
       .report-stage {
         position: static;
         width: auto;
+        opacity: 1;
         z-index: auto;
       }
       .report {
@@ -1179,14 +1202,8 @@
       .signature-grid {
         grid-template-columns: 1fr;
       }
-      .signature-fields {
-        grid-template-columns: 1fr;
-      }
-      .signature-pads {
-        grid-template-columns: 1fr;
-      }
-      .signature-section {
-        margin-bottom: 100px;
+      .sign-overlay-info {
+        flex-direction: column;
       }
     }
   </style>
@@ -1286,10 +1303,25 @@
       <div class="list" id="itemList"></div>
     </main>
 
-    <section class="signature-section" aria-label="签字确认">
-      <h3>签字确认</h3>
-      <p class="signature-hint">评分完成后，请门店负责人在下方手写签字，作为本次稽查结果的确认。签字将保留在 PDF 报告末尾。</p>
-      <div class="signature-fields">
+    <footer class="bottom-actions">
+      <div class="bottom-inner">
+        <button class="action-btn primary" id="goSignBtn">去签字</button>
+        <button class="action-btn" id="exportDataBtn">备份数据</button>
+        <button class="action-btn warn" id="clearPhotosBtn">清空照片</button>
+        <button class="action-btn danger" id="resetBtn">重置稽查</button>
+      </div>
+    </footer>
+  </div>
+
+  <!-- 全屏签字遮罩 -->
+  <div class="sign-overlay" id="signOverlay">
+    <div class="sign-overlay-inner">
+      <div class="sign-overlay-head">
+        <button class="secondary-btn" id="signCancelBtn" type="button">返回</button>
+        <h3>门店负责人签字</h3>
+        <button class="secondary-btn" id="signClearBtn" type="button">清除重签</button>
+      </div>
+      <div class="sign-overlay-info">
         <div class="field">
           <label for="signerName">门店负责人姓名</label>
           <input id="signerName" placeholder="请输入姓名" autocomplete="name">
@@ -1299,34 +1331,14 @@
           <input id="signDate" type="date">
         </div>
       </div>
-      <div class="signature-pads">
-        <div class="signature-card">
-          <div class="signature-card-head">
-            <strong>门店负责人签字</strong>
-            <button class="secondary-btn" id="clearSignatureBtn" type="button">清除</button>
-          </div>
-          <canvas id="signatureCanvas" width="900" height="240"></canvas>
-          <div class="signature-tip">使用手指或鼠标在灰色区域内签名</div>
-        </div>
-        <div class="signature-card">
-          <div class="signature-card-head">
-            <strong>稽查人签字（可选）</strong>
-            <button class="secondary-btn" id="clearAuditorSignatureBtn" type="button">清除</button>
-          </div>
-          <canvas id="auditorSignatureCanvas" width="900" height="180"></canvas>
-          <div class="signature-tip">由本次稽查人签名</div>
-        </div>
+      <div class="sign-canvas-area">
+        <canvas id="signatureCanvas" width="1200" height="500"></canvas>
+        <div class="sign-canvas-placeholder">请在此区域内手写签名</div>
       </div>
-    </section>
-
-    <footer class="bottom-actions">
-      <div class="bottom-inner">
-        <button class="action-btn primary" id="exportPdfBtn">导出 PDF</button>
-        <button class="action-btn" id="exportDataBtn">备份数据</button>
-        <button class="action-btn warn" id="clearPhotosBtn">清空照片</button>
-        <button class="action-btn danger" id="resetBtn">重置稽查</button>
+      <div class="sign-overlay-foot">
+        <button class="action-btn primary" id="signConfirmBtn">确认完成并导出报告</button>
       </div>
-    </footer>
+    </div>
   </div>
 
   <section class="records-view view" id="recordsView">
@@ -2157,15 +2169,10 @@
       records: [],
     };
 
-    // 便捷访问（兼容原 state.signature / state.auditorSignature 用法）
-    Object.defineProperty(state, 'signature', { get() { return state.meta.signature; }, set(v) { state.meta.signature = v; } });
-    Object.defineProperty(state, 'auditorSignature', { get() { return state.meta.auditorSignature; }, set(v) { state.meta.auditorSignature = v; } });
-
     let db;
     let toastTimer;
     let saveTimer;
     let signaturePad;
-    let auditorSignaturePad;
 
     function openDb() {
       return new Promise((resolve, reject) => {
@@ -2573,7 +2580,7 @@
               <div class="signature-pad">
                 <div class="signature-label">门店负责人签字</div>
                 <div class="signature-canvas-wrap">
-                  ${state.signature ? `<img class="signature-preview" src="${state.signature}" alt="门店负责人签字">` : '<div class="signature-empty">（未签字）</div>'}
+                  ${state.meta.signature ? `<img class="signature-preview" src="${state.meta.signature}" alt="门店负责人签字">` : '<div class="signature-empty">（未签字）</div>'}
                 </div>
                 <div class="signature-meta">
                   <div>签字人姓名：${escapeHtml(state.meta.signerName || '________')}</div>
@@ -2581,13 +2588,12 @@
                 </div>
               </div>
               <div class="signature-pad">
-                <div class="signature-label">稽查人签字</div>
+                <div class="signature-label">稽查人</div>
                 <div class="signature-canvas-wrap">
-                  ${state.auditorSignature ? `<img class="signature-preview" src="${state.auditorSignature}" alt="稽查人签字">` : '<div class="signature-empty">（未签字）</div>'}
+                  <div class="signature-text">${escapeHtml(auditor)}</div>
                 </div>
                 <div class="signature-meta">
-                  <div>稽查人：${escapeHtml(auditor)}</div>
-                  <div>日期：${escapeHtml(state.meta.auditDate || TODAY)}</div>
+                  <div>稽查日期：${escapeHtml(state.meta.auditDate || TODAY)}</div>
                 </div>
               </div>
             </div>
@@ -2630,17 +2636,12 @@
       state.meta.signerName = document.getElementById('signerName').value.trim();
       state.meta.signDate = document.getElementById('signDate').value || state.meta.auditDate || TODAY;
 
-      // 强制保存当前画板状态（防止用户签完未触发 mouseup）
       if (signaturePad) signaturePad.flush();
-      if (auditorSignaturePad) auditorSignaturePad.flush();
       await putToStore('meta', { key: META_KEY, data: state.meta });
 
-      // 校验：门店负责人必须签字才能导出
-      if (!state.signature) {
-        showToast('请先完成门店负责人签字后再导出报告');
-        // 滚动到签字区
-        const sigSection = document.querySelector('.signature-section');
-        if (sigSection) sigSection.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      if (!state.meta.signature) {
+        showToast('请先完成门店负责人签字');
+        openSignOverlay();
         return;
       }
 
@@ -2719,8 +2720,7 @@
         category_scores: categoryScores(),
         signer_name: state.meta.signerName || '',
         sign_date: state.meta.signDate || '',
-        has_signature: Boolean(state.signature),
-        has_auditor_signature: Boolean(state.auditorSignature),
+        has_signature: Boolean(state.meta.signature),
       };
     }
 
@@ -2898,6 +2898,35 @@
     }
 
     // ─────────────── 签字画板 ───────────────
+    // 全屏签字遮罩控制
+    function openSignOverlay() {
+      const overlay = document.getElementById('signOverlay');
+      overlay.classList.add('active');
+      document.body.style.overflow = 'hidden';
+      // 延迟一帧再 fitCanvas，确保 canvas 已获得实际尺寸
+      requestAnimationFrame(() => {
+        if (signaturePad) {
+          signaturePad.fitCanvas();
+          // 如果已有签名，绘制到画板
+          if (state.meta.signature) {
+            const canvas = signaturePad.canvas;
+            const ctx = canvas.getContext('2d');
+            const img = new Image();
+            img.onload = () => {
+              const rect = canvas.getBoundingClientRect();
+              ctx.drawImage(img, 0, 0, rect.width, rect.height);
+            };
+            img.src = state.meta.signature;
+          }
+        }
+      });
+    }
+
+    function closeSignOverlay() {
+      document.getElementById('signOverlay').classList.remove('active');
+      document.body.style.overflow = '';
+    }
+
     function setupSignaturePad(canvasId, getValue, setValue) {
       const canvas = document.getElementById(canvasId);
       if (!canvas) return;
@@ -2957,6 +2986,9 @@
         lastX = point.x;
         lastY = point.y;
         hasContent = true;
+        // 隐藏 placeholder
+        const ph = canvas.parentElement.querySelector('.sign-canvas-placeholder');
+        if (ph) ph.classList.add('hidden');
       }
 
       function end() {
@@ -2974,6 +3006,9 @@
         ctx.restore();
         hasContent = false;
         setValue(null);
+        // 恢复 placeholder
+        const ph = canvas.parentElement.querySelector('.sign-canvas-placeholder');
+        if (ph) ph.classList.remove('hidden');
       }
 
       // 鼠标事件
@@ -3047,7 +3082,6 @@
       await clearStore('photos');
       // 同步清空画板
       if (signaturePad) signaturePad.clear();
-      if (auditorSignaturePad) auditorSignaturePad.clear();
       document.getElementById('signerName').value = '';
       document.getElementById('signDate').value = state.meta.auditDate || TODAY;
       render();
@@ -3148,7 +3182,24 @@
         document.getElementById('lightbox').classList.remove('show');
         document.getElementById('lightboxImage').src = '';
       });
-      document.getElementById('exportPdfBtn').addEventListener('click', () => exportPdf().catch((error) => showToast(`PDF 导出失败：${error.message}`)));
+      document.getElementById('goSignBtn').addEventListener('click', () => openSignOverlay());
+      document.getElementById('signCancelBtn').addEventListener('click', () => closeSignOverlay());
+      document.getElementById('signClearBtn').addEventListener('click', () => {
+        if (signaturePad) signaturePad.clear();
+        const ph = document.querySelector('.sign-canvas-placeholder');
+        if (ph) ph.classList.remove('hidden');
+        showToast('已清除，请重新签名');
+      });
+      document.getElementById('signConfirmBtn').addEventListener('click', () => {
+        if (!signaturePad) return;
+        signaturePad.flush();
+        if (!state.meta.signature) {
+          showToast('请先在签名区手写签名');
+          return;
+        }
+        closeSignOverlay();
+        exportPdf().catch((error) => showToast(`PDF 导出失败：${error.message}`));
+      });
       document.getElementById('exportDataBtn').addEventListener('click', exportData);
       document.getElementById('clearPhotosBtn').addEventListener('click', () => clearAllPhotos().catch((error) => showToast(error.message)));
       document.getElementById('resetBtn').addEventListener('click', () => resetAudit().catch((error) => showToast(error.message)));
@@ -3159,14 +3210,6 @@
       document.getElementById('signDate').addEventListener('input', (event) => {
         state.meta.signDate = event.target.value;
         scheduleMetaSave();
-      });
-      document.getElementById('clearSignatureBtn').addEventListener('click', () => {
-        signaturePad.clear();
-        showToast('门店签字已清除');
-      });
-      document.getElementById('clearAuditorSignatureBtn').addEventListener('click', () => {
-        auditorSignaturePad.clear();
-        showToast('稽查人签字已清除');
       });
       document.getElementById('saveCloudConfigBtn').addEventListener('click', () => {
         state.cloudConfig = {
@@ -3199,13 +3242,10 @@
       document.getElementById('auditDate').value = state.meta.auditDate || TODAY;
       document.getElementById('signerName').value = state.meta.signerName || '';
       document.getElementById('signDate').value = state.meta.signDate || state.meta.auditDate || TODAY;
-      // 初始化签字画板（在 DOM 准备好后）
+      // 初始化签字画板（全屏遮罩里的 canvas）
       signaturePad = setupSignaturePad('signatureCanvas',
-        () => state.signature,
-        (value) => { state.signature = value; scheduleMetaSave(); });
-      auditorSignaturePad = setupSignaturePad('auditorSignatureCanvas',
-        () => state.auditorSignature,
-        (value) => { state.auditorSignature = value; scheduleMetaSave(); });
+        () => state.meta.signature,
+        (value) => { state.meta.signature = value; scheduleMetaSave(); });
       renderCloudConfig();
       bindEvents();
       render();
