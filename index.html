@@ -1323,10 +1323,6 @@
       </div>
       <div class="sign-overlay-info">
         <div class="field">
-          <label for="signerName">门店负责人姓名</label>
-          <input id="signerName" placeholder="请输入姓名" autocomplete="name">
-        </div>
-        <div class="field">
           <label for="signDate">签字日期</label>
           <input id="signDate" type="date">
         </div>
@@ -1838,7 +1834,7 @@
     "category": "F7",
     "type": "观察点",
     "score": 5,
-    "desc": "冷藏冷冻设备温度不符合标准。冷藏标准为8℃及 以上， 冷冻标准为-13℃及以上\n包括但不限于以下：\n冷冻设备：双/四门冷冻柜\n冷藏设备：双/四门冷藏柜、平冷"
+    "desc": "冷藏冷冻设备温度不符合标准。冷藏标准为2℃-6℃（不得超过8℃），冷冻标准为-18℃（不得超过-13℃）\n包括但不限于以下：\n冷冻设备：双/四门冷冻柜\n冷藏设备：双/四门冷藏柜、平冷"
   },
   {
     "id": "F7.2.2",
@@ -2161,7 +2157,7 @@
     const TODAY = new Date().toISOString().slice(0, 10);
 
     const state = {
-      meta: { storeName: '', auditor: '', auditDate: TODAY, statuses: {}, notes: {}, signerName: '', signDate: '', signature: null, auditorSignature: null },
+      meta: { storeName: '', auditor: '', auditDate: TODAY, statuses: {}, notes: {}, signDate: '', signature: null, auditorSignature: null },
       photos: [],
       currentView: 'workbench',
       currentCategory: 'all',
@@ -2247,6 +2243,8 @@
         state.meta.statuses ||= {};
         state.meta.notes ||= {};
         state.meta.auditDate ||= TODAY;
+        // 已废弃字段：签字页不再录入负责人姓名，仅以手写签名 + 日期为准
+        delete state.meta.signerName;
       }
       state.photos = (await getAllFromStore('photos')).sort((a, b) => a.createdAt - b.createdAt);
       try {
@@ -2586,7 +2584,6 @@
                   ${state.meta.signature ? `<img class="signature-preview" src="${state.meta.signature}" alt="门店负责人签字">` : '<div class="signature-empty">（未签字）</div>'}
                 </div>
                 <div class="signature-meta">
-                  <div>签字人姓名：${escapeHtml(state.meta.signerName || '________')}</div>
                   <div>签字日期：${escapeHtml(state.meta.signDate || state.meta.auditDate || TODAY)}</div>
                 </div>
               </div>
@@ -2636,7 +2633,6 @@
       state.meta.storeName = document.getElementById('storeName').value.trim();
       state.meta.auditor = document.getElementById('auditor').value.trim();
       state.meta.auditDate = document.getElementById('auditDate').value || TODAY;
-      state.meta.signerName = document.getElementById('signerName').value.trim();
       state.meta.signDate = document.getElementById('signDate').value || state.meta.auditDate || TODAY;
 
       if (signaturePad) signaturePad.flush();
@@ -2815,7 +2811,6 @@
         fail_count: s.fail,
         pending_count: s.pending,
         category_scores: categoryScores(),
-        signer_name: state.meta.signerName || '',
         sign_date: state.meta.signDate || '',
         has_signature: Boolean(state.meta.signature),
       };
@@ -3121,14 +3116,12 @@
       state.meta.notes = {};
       state.meta.signature = null;
       state.meta.auditorSignature = null;
-      state.meta.signerName = '';
       state.meta.signDate = '';
       state.photos = [];
       await putToStore('meta', { key: META_KEY, data: state.meta });
       await clearStore('photos');
       // 同步清空画板
       if (signaturePad) signaturePad.clear();
-      document.getElementById('signerName').value = '';
       document.getElementById('signDate').value = state.meta.auditDate || TODAY;
       render();
       showToast('稽查记录已重置');
@@ -3249,10 +3242,6 @@
       document.getElementById('exportDataBtn').addEventListener('click', exportData);
       document.getElementById('clearPhotosBtn').addEventListener('click', () => clearAllPhotos().catch((error) => showToast(error.message)));
       document.getElementById('resetBtn').addEventListener('click', () => resetAudit().catch((error) => showToast(error.message)));
-      document.getElementById('signerName').addEventListener('input', (event) => {
-        state.meta.signerName = event.target.value.trim();
-        scheduleMetaSave();
-      });
       document.getElementById('signDate').addEventListener('input', (event) => {
         state.meta.signDate = event.target.value;
         scheduleMetaSave();
@@ -3286,7 +3275,6 @@
       document.getElementById('storeName').value = state.meta.storeName || '';
       document.getElementById('auditor').value = state.meta.auditor || '';
       document.getElementById('auditDate').value = state.meta.auditDate || TODAY;
-      document.getElementById('signerName').value = state.meta.signerName || '';
       document.getElementById('signDate').value = state.meta.signDate || state.meta.auditDate || TODAY;
       // 初始化签字画板（全屏遮罩里的 canvas）
       signaturePad = setupSignaturePad('signatureCanvas',
