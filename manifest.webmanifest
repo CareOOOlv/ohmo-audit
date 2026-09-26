@@ -1,0 +1,16 @@
+{
+  "name": "OHMO 冰奶门店稽查",
+  "short_name": "OHMO稽查",
+  "description": "94项门店稽查评分、拍照取证、云端记录同步",
+  "start_url": "./",
+  "scope": "./",
+  "display": "standalone",
+  "orientation": "portrait",
+  "background_color": "#fef7dd",
+  "theme_color": "#2f6f57",
+  "icons": [
+    { "src": "./icons/icon-192.png", "sizes": "192x192", "type": "image/png" },
+    { "src": "./icons/icon-512.png", "sizes": "512x512", "type": "image/png" },
+    { "src": "./icons/icon-maskable-512.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable" }
+  ]
+}
